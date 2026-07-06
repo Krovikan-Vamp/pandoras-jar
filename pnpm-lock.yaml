@@ -20,9 +20,15 @@ importers:
       '@pithos/audio':
         specifier: workspace:*
         version: link:../../packages/audio
+      '@pithos/data':
+        specifier: workspace:*
+        version: link:../../packages/data
       '@pithos/render':
         specifier: workspace:*
         version: link:../../packages/render
+      '@pithos/save':
+        specifier: workspace:*
+        version: link:../../packages/save
       '@pithos/sim':
         specifier: workspace:*
         version: link:../../packages/sim
