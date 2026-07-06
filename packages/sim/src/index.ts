@@ -29,3 +29,38 @@ export { FORM_IDS, SCHOOL_IDS } from "./combat/types.js";
 export { assertCompleteFlavorMap, resolveAttack } from "./combat/resolveAttack.js";
 
 export type { ModifierRegistry, StatBlock, StatKey } from "./perks/types.js";
+export type { CombatEventBus, CombatEventMap } from "./perks/EventBus.js";
+export { createEventBus } from "./perks/EventBus.js";
+export type { Modifier, ModifierOp } from "./perks/ModifierRegistry.js";
+export { ModifierRegistryImpl } from "./perks/ModifierRegistry.js";
+export type { Perk, PerkTier } from "./perks/Perk.js";
+
+export { FormFluxMachine } from "./state/FormFluxMachine.js";
+export type {
+  RunFlowActor,
+  RunFlowContext,
+  RunFlowEvent,
+  RunFlowSnapshot,
+  RunFlowStateValue,
+  WingId,
+} from "./state/RunFlowMachine.js";
+export {
+  MIDPOINT_REVELATION_FRAGMENT_THRESHOLD,
+  TOTAL_FRAGMENT_COUNT,
+  createInitialRunFlowContext,
+  createRunFlowActor,
+  isConfluenceUnlocked,
+  runFlowMachine,
+} from "./state/RunFlowMachine.js";
+
+export type { FloorPlan, RoomKind, RoomTemplate, WingDefinition, WingPlan } from "./procgen/types.js";
+export { generateWingPlan, mulberry32 } from "./procgen/WingGenerator.js";
+
+export type {
+  AttackPattern,
+  BossDecisionContext,
+  BossDefinition,
+  BossPhase,
+  BossPhaseId,
+} from "./bosses/types.js";
+export { BossController } from "./bosses/BossController.js";
