@@ -37,6 +37,19 @@ importers:
         specifier: ^8.1.3
         version: 8.1.3
 
+  packages/data:
+    dependencies:
+      '@pithos/sim':
+        specifier: workspace:*
+        version: link:../sim
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(vite@8.1.3)
+
   packages/render:
     dependencies:
       three:
@@ -50,11 +63,36 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  packages/save:
+    dependencies:
+      '@pithos/sim':
+        specifier: workspace:*
+        version: link:../sim
+      idb:
+        specifier: ^8.0.3
+        version: 8.0.3
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(vite@8.1.3)
+
   packages/sim:
     dependencies:
       miniplex:
         specifier: ^2.0.0
         version: 2.0.0
+      mistreevous:
+        specifier: ^4.3.1
+        version: 4.3.1
+      mitt:
+        specifier: ^3.0.1
+        version: 3.0.1
+      xstate:
+        specifier: ^5.32.4
+        version: 5.32.4
     devDependencies:
       typescript:
         specifier: ^5.7.3
@@ -300,6 +338,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  idb@8.0.3:
+    resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
+
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
     engines: {node: '>= 12.0.0'}
@@ -374,6 +415,9 @@ packages:
     resolution: {integrity: sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ==}
     engines: {node: '>= 12.0.0'}
 
+  lotto-draw@1.0.2:
+    resolution: {integrity: sha512-1ih414A35BWpApfNlWAHBKOBLSxTj45crAJ+CMWF/kVY5nx6N22DA1OVF/FWW5WM5CGJbIMRh1O+xe8ukyoQ8Q==}
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -382,6 +426,12 @@ packages:
 
   miniplex@2.0.0:
     resolution: {integrity: sha512-pJlxmlPf5Qyx12amgOCyRE6Lzw28ct2G0lF9xn7/xudLtA/xDOUnCIU2xOxCk8GkjePYctcNpjmFshJp/Ht66A==}
+
+  mistreevous@4.3.1:
+    resolution: {integrity: sha512-AnDNOd8qGcBbz1fDRGYh5Kf+FodR4KcZyc+H4rPpFL7kdOAmGSwnpW57HwX9h0J8pDrj6FJRSAXdfqI6/N1UTw==}
+
+  mitt@3.0.1:
+    resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
   nanoid@3.3.15:
     resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
@@ -538,6 +588,9 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  xstate@5.32.4:
+    resolution: {integrity: sha512-E5WtDB8DBs2ZWliz2Ry9XfbSZTbBRcK/cwefBot04qQ/L5SLP16xpnTDU4/ZFXuXFhNxi7JP2RhuoGwBnM+S4A==}
 
 snapshots:
 
@@ -730,6 +783,8 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  idb@8.0.3: {}
+
   lightningcss-android-arm64@1.32.0:
     optional: true
 
@@ -779,6 +834,8 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.32.0
       lightningcss-win32-x64-msvc: 1.32.0
 
+  lotto-draw@1.0.2: {}
+
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
@@ -790,6 +847,12 @@ snapshots:
       '@hmans/id': 0.0.1
       '@hmans/queue': 0.0.1
       '@miniplex/bucket': 2.0.0
+
+  mistreevous@4.3.1:
+    dependencies:
+      lotto-draw: 1.0.2
+
+  mitt@3.0.1: {}
 
   nanoid@3.3.15: {}
 
@@ -893,3 +956,5 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  xstate@5.32.4: {}
