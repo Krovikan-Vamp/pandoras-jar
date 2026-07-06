@@ -1,0 +1,20 @@
+{
+  "name": "@pithos/sim",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "miniplex": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.10"
+  }
+}
