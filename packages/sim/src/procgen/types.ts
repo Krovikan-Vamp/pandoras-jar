@@ -19,6 +19,19 @@
 
 export type RoomKind = "start" | "combat" | "reward" | "boss";
 
+/**
+ * A trash-mob spawn instruction inside a `RoomTemplate`. Deliberately
+ * references enemies by loose *tag* (e.g. `"elemental_wildlife"`, `"earth"`)
+ * rather than a concrete enemy id — this keeps room content and the enemy
+ * roster (`enemies/types.ts`) decoupled: either can be authored without the
+ * other existing yet, and which exact `EnemyDefinition`s satisfy a tag is
+ * resolved at runtime, not baked into the room template.
+ */
+export interface RoomSpawnMarker {
+  enemyPoolTags: string[];
+  count: number;
+}
+
 export interface RoomTemplate {
   id: string;
   kind: RoomKind;
@@ -35,6 +48,8 @@ export interface RoomTemplate {
   entryCount: number;
   /** How many door connections lead out of this room. Same caveat as `entryCount`. */
   exitCount: number;
+  /** Omitted/empty for start/reward/boss rooms that don't spawn trash mobs. */
+  spawns?: RoomSpawnMarker[];
 }
 
 export interface WingDefinition {

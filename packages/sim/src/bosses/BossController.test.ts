@@ -57,6 +57,8 @@ function makeFixtureBoss(overrides: Partial<BossDefinition> = {}): BossDefinitio
   return {
     id: "test-fixture-boss",
     displayName: "Test Fixture Boss (not a real Spite)",
+    epithet: "Test Fixture, of Nothing In Particular",
+    loreDescription: "A fixture boss used only to exercise BossController's phase/pattern machinery in tests.",
     maxHealth: 100,
     phases: [
       {

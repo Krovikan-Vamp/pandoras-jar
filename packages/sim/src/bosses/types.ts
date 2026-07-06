@@ -76,6 +76,10 @@ export interface BossPhase {
 export interface BossDefinition {
   id: string;
   displayName: string;
+  /** e.g. "Ponos, Spite of Toil" — GDD.md §11. The Spites are written as tragic/sympathetic, not villainous; a future UI boss-intro screen renders this. */
+  epithet: string;
+  /** 1-2 sentence tragic characterization (GDD.md §2: "sympathetic personification just doing what they were freed to do"). */
+  loreDescription: string;
   maxHealth: number;
   /** Must include exactly one phase with `hpThreshold: 1` — the starting phase, active at full HP. */
   phases: BossPhase[];

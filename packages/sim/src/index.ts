@@ -53,7 +53,14 @@ export {
   runFlowMachine,
 } from "./state/RunFlowMachine.js";
 
-export type { FloorPlan, RoomKind, RoomTemplate, WingDefinition, WingPlan } from "./procgen/types.js";
+export type {
+  FloorPlan,
+  RoomKind,
+  RoomSpawnMarker,
+  RoomTemplate,
+  WingDefinition,
+  WingPlan,
+} from "./procgen/types.js";
 export { generateWingPlan, mulberry32 } from "./procgen/WingGenerator.js";
 
 export type {
@@ -64,3 +71,5 @@ export type {
   BossPhaseId,
 } from "./bosses/types.js";
 export { BossController } from "./bosses/BossController.js";
+
+export type { EnemyCategory, EnemyDefinition } from "./enemies/types.js";
