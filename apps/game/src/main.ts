@@ -8,6 +8,7 @@ import {
 import { MovementController, createWorld } from "@pithos/sim";
 import * as THREE from "three";
 
+import { mountAdminRouteIfRequested } from "./admin/mountAdminRoute";
 import { DebugHud } from "./debug/DebugHud";
 import { InputManager } from "./input/InputManager";
 import { PlayerPhysics } from "./physics/PlayerPhysics";
@@ -17,6 +18,8 @@ const MAX_DT = 1 / 20; // clamp large frame gaps (tab switches, etc.) to avoid a
 const SPAWN = new THREE.Vector3(0, 1, 8);
 
 async function main(): Promise<void> {
+  if (mountAdminRouteIfRequested()) return;
+
   const appRoot = document.querySelector<HTMLDivElement>("#app");
   if (!appRoot) throw new Error("#app root element not found");
 

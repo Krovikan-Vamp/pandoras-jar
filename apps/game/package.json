@@ -12,10 +12,15 @@
   "dependencies": {
     "@pithos/render": "workspace:*",
     "@pithos/sim": "workspace:*",
+    "@pithos/ui": "workspace:*",
     "@dimforge/rapier3d-compat": "^0.19.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.0",
     "typescript": "^5.7.3",
     "vite": "^8.1.3"
