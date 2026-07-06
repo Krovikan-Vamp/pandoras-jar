@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build:packages": "pnpm --filter @pithos/sim build && pnpm --filter @pithos/render build && pnpm --filter @pithos/save build && pnpm --filter @pithos/data build && pnpm --filter @pithos/audio build",
+    "build:packages": "pnpm --filter @pithos/sim build && pnpm --filter @pithos/render build && pnpm --filter @pithos/save build && pnpm --filter @pithos/data build && pnpm --filter @pithos/audio build && pnpm --filter @pithos/ui build",
     "dev": "pnpm run build:packages && pnpm --filter game dev",
     "build": "pnpm run build:packages && pnpm -r build",
     "test": "pnpm -r test",

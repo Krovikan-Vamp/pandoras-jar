@@ -8,7 +8,7 @@ import type { CombatEventMap, ModifierOp, Perk, SchoolId } from "@pithos/sim";
  * (see those files' headers for the general pattern this content pass
  * follows); this header repeats only what's specific to School Perks.
  *
- * ## Two recurring mechanical patterns
+ * ## Three recurring mechanical patterns
  *
  * 1. **"While Soaked"/"while burning"-style gating** — none of the five
  *    Schools' passives (Stoneskin, Kindling, Undertow, Tailwind, Starlight
@@ -42,21 +42,44 @@ import type { CombatEventMap, ModifierOp, Perk, SchoolId } from "@pithos/sim";
  *    and uses throughout (e.g. `criticalDoubleChance`,
  *    `gasDotMaxStacksBonus`).
  *
+ * 3. **`ModifierRegistryImpl` only re-folds a stat on `register`/`unregister`
+ *    — never "live"** — its `get()` caches the folded value per stat and
+ *    only clears that cache inside `register()`/`unregister()` (see its
+ *    class doc: "Recompute is lazy and cached per-stat... `register`/
+ *    `unregister` invalidate the entire cache"). A `condition` callback is
+ *    re-run only when a fold happens, so a modifier registered once with a
+ *    condition that flips later purely inside a bus handler (our "Soaked"
+ *    tracking, our Liquid-Form flag) will NOT be picked up by `get()` on its
+ *    own — nothing told the cache it's stale. `ModifierRegistry.test.ts`
+ *    hits this exact edge case and works around it with a throwaway
+ *    `register()` call "to force cache invalidation"; `perks/forms.ts`
+ *    documents the same thing as its own pattern #3. Every perk below whose
+ *    condition depends on state a *later* event mutates (Tidecaller,
+ *    Pressure, Healing Spring) re-registers the same modifier (same
+ *    id/stat/op/value/condition) from inside that event's handler — a no-op
+ *    content change that forces `ModifierRegistryImpl` to drop its cache so
+ *    the next `get()` re-folds against the now-current condition. Ember
+ *    Cascade and Phoenix Ash don't need this: they register/unregister a
+ *    fresh value directly at the moment their triggering event fires,
+ *    rather than parking a `condition` callback for some later, unrelated
+ *    `get()` to re-evaluate.
+ *
  * ## What's fully wired today vs. declared-for-later
  *
  * `damageMultiplier` is the one stat actually consumed by real combat code
- * today (`combat/resolveAttack.ts`): `Tidecaller` and `Pressure`'s shared
- * damage half register onto it, so that part of Tidecaller has a genuine,
- * live effect on computed damage whenever its condition holds. `Golem's
- * Heart` reuses `maxHealthMultiplier` — the same placeholder stat
- * `perks/rare.ts`'s Glass Cannon already established — so the two are
- * mutually stacking today even though nothing yet reads `maxHealthMultiplier`
- * when computing an actor's effective max HP. Every other invented stat
- * here is forward-declared data, matching this task's brief ("inventing a
- * new stat key is fine if consistent and documented"); spatial effects
- * (cracks, knockback, pull, a minimap) that need position/ECS/rendering
- * data this package doesn't have are flagged with a one-line "PLACEHOLDER
- * GAP" comment at the point they're not fully expressible, per perk, below.
+ * today (`combat/resolveAttack.ts`): Tidecaller registers onto it, so that
+ * perk has a genuine, live effect on computed damage whenever its condition
+ * holds (Pressure's own effect is a separate, forward-declared stat — see
+ * its own comment below). `Golem's Heart` reuses `maxHealthMultiplier` — the
+ * same placeholder stat `perks/rare.ts`'s Glass Cannon already established —
+ * so the two are mutually stacking today even though nothing yet reads
+ * `maxHealthMultiplier` when computing an actor's effective max HP. Every
+ * other invented stat here is forward-declared data, matching this task's
+ * brief ("inventing a new stat key is fine if consistent and documented");
+ * spatial effects (cracks, knockback, pull, a minimap) that need
+ * position/ECS/rendering data this package doesn't have are flagged with a
+ * one-line "PLACEHOLDER GAP" comment at the point they're not fully
+ * expressible, per perk, below.
  */
 
 // ---------------------------------------------------------------------------
@@ -141,6 +164,15 @@ function createSoakedTracker() {
  * Tidecaller and Pressure — the only difference between the two is which
  * stat/op they contribute to. See `PERK_WATER_TIDECALLER`'s own comment for
  * the "Soaked" approximation's limits and the `damageMultiplier` exception.
+ *
+ * Per the file-level doc's pattern #3, the `onHit` handler doesn't just feed
+ * `tracker` — it also re-registers the modifier so `ModifierRegistryImpl`
+ * drops its cache and the next `get()` reflects the actor's current
+ * "last-hit target Soaked?" state immediately, not whenever some unrelated
+ * `register`/`unregister` call next happens to run. (The Soaked window's
+ * silent time-based expiry has the same residual approximation Bulwark's
+ * `perks/forms.ts` doc calls out: it only becomes visible on this actor's
+ * *next* hit, not at the exact instant the window closes.)
  */
 function createSoakedGatedPerk(config: {
   id: string;
@@ -154,23 +186,30 @@ function createSoakedGatedPerk(config: {
   const hitHandlerByActor = new Map<string, (event: CombatEventMap["onHit"]) => void>();
   const modifierId = (actorId: string) => `${config.id}:${actorId}`;
 
+  const registerModifier = (registry: Parameters<Perk["apply"]>[0], actorId: string): void => {
+    registry.register({
+      id: modifierId(actorId),
+      stat: config.stat,
+      op: config.op,
+      value: config.value,
+      condition: () => tracker.isLastHitTargetSoaked(actorId),
+    });
+  };
+
   return {
     id: config.id,
     tier: "school",
     displayName: config.displayName,
     description: config.description,
     apply(registry, bus, actorId) {
-      const hitHandler = (event: CombatEventMap["onHit"]) => tracker.onHit(event, actorId);
+      registerModifier(registry, actorId);
+
+      const hitHandler = (event: CombatEventMap["onHit"]) => {
+        tracker.onHit(event, actorId);
+        registerModifier(registry, actorId); // force ModifierRegistryImpl's cache to drop — see pattern #3
+      };
       hitHandlerByActor.set(actorId, hitHandler);
       bus.on("onHit", hitHandler);
-
-      registry.register({
-        id: modifierId(actorId),
-        stat: config.stat,
-        op: config.op,
-        value: config.value,
-        condition: () => tracker.isLastHitTargetSoaked(actorId),
-      });
     },
     remove(registry, bus, actorId) {
       const hitHandler = hitHandlerByActor.get(actorId);
@@ -544,13 +583,27 @@ const WATER_HEALING_SPRING_HP_PER_SECOND = 5;
  * position/hazard-volume data to check actual overlap with a placed pool,
  * so a future movement/hazard system would need to refine this to true
  * pool-standing. `waterHealingSpringHpPerSecond` is an `override`'d flat
- * HP/sec value, active only while the condition holds.
+ * HP/sec value, active only while the condition holds. Per the file-level
+ * doc's pattern #3, the `onFormSwap` handler re-registers this modifier on
+ * every swap (not just flipping the tracked flag), forcing
+ * `ModifierRegistryImpl` to drop its cache so the next `get()` reflects the
+ * actor's current Form immediately.
  */
 function createWaterHealingSpringPerk(): Perk {
   const id = "water_healing_spring";
   const inLiquidFormByActor = new Map<string, boolean>();
   const formSwapHandlerByActor = new Map<string, (event: CombatEventMap["onFormSwap"]) => void>();
   const modifierId = (actorId: string) => `${id}:${actorId}`;
+
+  const registerModifier = (registry: Parameters<Perk["apply"]>[0], actorId: string): void => {
+    registry.register({
+      id: modifierId(actorId),
+      stat: "waterHealingSpringHpPerSecond",
+      op: "override",
+      value: WATER_HEALING_SPRING_HP_PER_SECOND,
+      condition: () => inLiquidFormByActor.get(actorId) === true,
+    });
+  };
 
   return {
     id,
@@ -559,23 +612,17 @@ function createWaterHealingSpringPerk(): Perk {
     description: "Standing in your own Liquid pool restores HP over time.",
     apply(registry, bus, actorId) {
       inLiquidFormByActor.set(actorId, false);
+      registerModifier(registry, actorId);
 
       const formSwapHandler = (event: CombatEventMap["onFormSwap"]) => {
         if (event.actorId !== actorId) {
           return;
         }
         inLiquidFormByActor.set(actorId, event.toForm === "liquid");
+        registerModifier(registry, actorId); // force ModifierRegistryImpl's cache to drop — see pattern #3
       };
       formSwapHandlerByActor.set(actorId, formSwapHandler);
       bus.on("onFormSwap", formSwapHandler);
-
-      registry.register({
-        id: modifierId(actorId),
-        stat: "waterHealingSpringHpPerSecond",
-        op: "override",
-        value: WATER_HEALING_SPRING_HP_PER_SECOND,
-        condition: () => inLiquidFormByActor.get(actorId) === true,
-      });
     },
     remove(registry, bus, actorId) {
       const formSwapHandler = formSwapHandlerByActor.get(actorId);

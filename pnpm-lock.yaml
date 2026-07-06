@@ -17,6 +17,9 @@ importers:
       '@dimforge/rapier3d-compat':
         specifier: ^0.19.3
         version: 0.19.3
+      '@pithos/audio':
+        specifier: workspace:*
+        version: link:../../packages/audio
       '@pithos/render':
         specifier: workspace:*
         version: link:../../packages/render

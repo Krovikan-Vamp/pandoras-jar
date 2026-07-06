@@ -177,11 +177,11 @@ describe("Tidecaller (condition-gated on the 'Soaked' approximation, live via da
 
     // A water hit (from anyone) soaks enemy-1; this actor's next hit on it should be boosted.
     bus.emit("onHit", { attackerId: "someone-else", targetId: "enemy-1", damage: 8, damageType: "water" });
-    bus.emit("onHit", { attackerId, targetId: "enemy-1", damage: 10, damageType: "physical" });
+    bus.emit("onHit", { attackerId: actorId, targetId: "enemy-1", damage: 10, damageType: "physical" });
     expect(registry.get("damageMultiplier")).toBeCloseTo(1.25);
 
     // Hitting a different, non-Soaked target drops the bonus again.
-    bus.emit("onHit", { attackerId, targetId: "enemy-2", damage: 10, damageType: "physical" });
+    bus.emit("onHit", { attackerId: actorId, targetId: "enemy-2", damage: 10, damageType: "physical" });
     expect(registry.get("damageMultiplier")).toBe(1);
 
     PERK_WATER_TIDECALLER.remove(registry, bus, actorId);
@@ -189,7 +189,7 @@ describe("Tidecaller (condition-gated on the 'Soaked' approximation, live via da
 
     // Handler must be unsubscribed — further Soaked hits must not resurrect the effect.
     bus.emit("onHit", { attackerId: "someone-else", targetId: "enemy-1", damage: 8, damageType: "water" });
-    bus.emit("onHit", { attackerId, targetId: "enemy-1", damage: 10, damageType: "physical" });
+    bus.emit("onHit", { attackerId: actorId, targetId: "enemy-1", damage: 10, damageType: "physical" });
     expect(registry.get("damageMultiplier")).toBe(1);
   });
 });
@@ -203,7 +203,7 @@ describe("Pressure (Soaked-gated placeholder waterPressureStunChanceOnSoakedBonu
     PERK_WATER_PRESSURE.apply(registry, bus, actorId);
     expect(registry.get("waterPressureStunChanceOnSoakedBonus")).toBe(1);
 
-    bus.emit("onHit", { attackerId, targetId: "enemy-1", damage: 10, damageType: "water" });
+    bus.emit("onHit", { attackerId: actorId, targetId: "enemy-1", damage: 10, damageType: "water" });
     expect(registry.get("waterPressureStunChanceOnSoakedBonus")).toBeCloseTo(0.15);
 
     PERK_WATER_PRESSURE.remove(registry, bus, actorId);
@@ -245,25 +245,35 @@ describe("Ember Cascade (onKill-driven fireEmberCascadeProcCount)", () => {
 });
 
 describe("Phoenix Ash (once-per-expedition closure state)", () => {
-  it("exposes firePhoenixAshAvailable while unused, and consumes it on this actor's own death", () => {
+  // `firePhoenixAshAvailable` is registered as `override: 1` while unused —
+  // numerically indistinguishable from `ModifierRegistryImpl`'s own
+  // unregistered-stat baseline of `1` (a deliberate tradeoff of reusing the
+  // "1 = present" convention here, unlike Second Wind's distinct-from-1
+  // `secondWindCharges: 2`). `registry.has(...)` is therefore the only way
+  // to actually observe whether the modifier is registered; these tests use
+  // it throughout instead of `get(...)`.
+  const modifierId = (actorId: string) => `fire_phoenix_ash:${actorId}`;
+
+  it("registers firePhoenixAshAvailable while unused, and unregisters it on this actor's own death", () => {
     const registry = new ModifierRegistryImpl();
     const bus = createEventBus();
     const perk = createPerkFirePhoenixAsh();
     const actorId = "player-1";
 
-    expect(registry.get("firePhoenixAshAvailable")).toBe(1); // baseline: no modifier registered yet
+    expect(registry.has(modifierId(actorId))).toBe(false); // baseline: nothing registered yet
 
     perk.apply(registry, bus, actorId);
-    expect(registry.get("firePhoenixAshAvailable")).toBe(1); // available (indistinguishable from baseline by design)
+    expect(registry.has(modifierId(actorId))).toBe(true); // available
+    expect(registry.get("firePhoenixAshAvailable")).toBe(1);
 
     bus.emit("onKill", { killerId: "an-enemy", victimId: "someone-else" });
-    expect(registry.get("firePhoenixAshAvailable")).toBe(1); // other actors' deaths don't consume it
+    expect(registry.has(modifierId(actorId))).toBe(true); // other actors' deaths don't consume it
 
     bus.emit("onKill", { killerId: "an-enemy", victimId: actorId });
-    expect(registry.get("firePhoenixAshAvailable")).toBe(1); // consumed, reverted to baseline (modifier unregistered)
+    expect(registry.has(modifierId(actorId))).toBe(false); // consumed
 
     perk.remove(registry, bus, actorId);
-    expect(registry.get("firePhoenixAshAvailable")).toBe(1);
+    expect(registry.has(modifierId(actorId))).toBe(false);
   });
 
   it("resets the once-per-expedition flag only by constructing a fresh instance, never by reusing one", () => {
@@ -273,25 +283,21 @@ describe("Phoenix Ash (once-per-expedition closure state)", () => {
 
     const runOnePerk = createPerkFirePhoenixAsh();
     runOnePerk.apply(registry, bus, actorId);
+    expect(registry.has(modifierId(actorId))).toBe(true);
     bus.emit("onKill", { killerId: "an-enemy", victimId: actorId });
+    expect(registry.has(modifierId(actorId))).toBe(false); // spent
     runOnePerk.remove(registry, bus, actorId);
 
     // Reusing the SAME instance for a new "run" stays permanently spent: no
     // charge is granted the second time apply() is called.
-    let chargeGrantedAgain = false;
     runOnePerk.apply(registry, bus, actorId);
-    const registrySpy = new ModifierRegistryImpl();
-    runOnePerk.apply(registrySpy, bus, "player-2");
-    chargeGrantedAgain = registrySpy.has(`fire_phoenix_ash:player-2`);
-    expect(chargeGrantedAgain).toBe(false);
+    expect(registry.has(modifierId(actorId))).toBe(false);
     runOnePerk.remove(registry, bus, actorId);
-    runOnePerk.remove(registrySpy, bus, "player-2");
 
     // A genuinely fresh instance (a new "expedition") starts unused again.
     const runTwoPerk = createPerkFirePhoenixAsh();
-    const freshRegistry = new ModifierRegistryImpl();
-    runTwoPerk.apply(freshRegistry, bus, actorId);
-    expect(freshRegistry.has(`fire_phoenix_ash:${actorId}`)).toBe(true);
-    runTwoPerk.remove(freshRegistry, bus, actorId);
+    runTwoPerk.apply(registry, bus, actorId);
+    expect(registry.has(modifierId(actorId))).toBe(true);
+    runTwoPerk.remove(registry, bus, actorId);
   });
 });

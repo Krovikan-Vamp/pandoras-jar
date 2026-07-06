@@ -6,11 +6,11 @@
  * ElevenLabs, reads/writes files under assets/audio/, and imports a
  * Node-only package. `apply: "serve"` restricts it to `vite dev`.
  *
- * @pithos/audio isn't declared as a dependency of the `game` package (it's
- * only consumed here, server-side, by this dev-only plugin), so it's
- * imported by relative path into its built `dist/` output rather than as a
- * workspace package specifier. Run `pnpm --filter @pithos/audio build`
- * before `vite dev` picks this file up.
+ * @pithos/audio is declared as a workspace dependency of the `game` package
+ * even though it's only consumed here, server-side, by this dev-only
+ * plugin. Run `pnpm --filter @pithos/audio build` before `vite dev` picks
+ * this file up (its `dist/` output is what the package.json "main"/"types"
+ * fields resolve to).
  */
 
 import { randomUUID } from "node:crypto";
@@ -31,7 +31,7 @@ import type {
   VoiceCharacterProfile,
   VoiceGenerationAdapter,
   VoiceLineCue,
-} from "../../../packages/audio/dist/index.js";
+} from "@pithos/audio";
 import {
   ElevenLabsSfxAdapter,
   ElevenLabsVoiceAdapter,
@@ -42,7 +42,7 @@ import {
   SEED_SFX_CUES,
   SEED_VOICE_LINES,
   VOICE_CHARACTER_PROFILES,
-} from "../../../packages/audio/dist/index.js";
+} from "@pithos/audio";
 
 const ADMIN_API_PREFIX = "/__audio_admin/";
 const STATIC_FILES_PREFIX = "/audio-admin-files/";
