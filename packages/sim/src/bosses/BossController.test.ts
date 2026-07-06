@@ -270,10 +270,12 @@ describe("BossController", () => {
         }
       }
 
-      expect(counts.common + counts.rare).toBe(trials);
+      const commonCount = counts.common ?? 0;
+      const rareCount = counts.rare ?? 0;
+      expect(commonCount + rareCount).toBe(trials);
       // Expected ratio is 9:1. Generous tolerance (favor by more than 3x)
       // keeps this from ever being a flaky exact-count assertion.
-      expect(counts.common).toBeGreaterThan((counts.rare ?? 0) * 3);
+      expect(commonCount).toBeGreaterThan(rareCount * 3);
     });
 
     it("never selects a condition-excluded pattern even when it has a much higher weight", () => {

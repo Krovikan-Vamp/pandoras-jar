@@ -133,72 +133,16 @@ export type RunFlowStateValue =
   | "ending"
   | "newGamePlus";
 
-// --- Event-payload-dependent actions/guards -------------------------------
-//
-// These read fields that only exist on one specific event variant. They're
-// kept as standalone, explicitly-typed values (rather than named entries in
-// `setup({ actions/guards })`) because XState v5 types named actions/guards
-// against the *full* event union — narrowing to a single event's payload
-// only happens automatically for functions written inline at their specific
-// `on.<EVENT_TYPE>` call site, which is exactly what these are used as.
-
-const startWingExpedition = assign(
-  ({ event }: { event: Extract<RunFlowEvent, { type: "SELECT_WING" }> }) => ({
-    currentWingId: event.wingId as WingId,
-    currentFloorIndex: 0,
-    currentRoomIndex: 0,
-    pendingIchor: 0,
-  }),
-);
-
-const advanceRoomCleared = assign(
-  ({
-    context,
-    event,
-  }: {
-    context: RunFlowContext;
-    event: Extract<RunFlowEvent, { type: "ROOM_CLEARED" }>;
-  }) => ({
-    currentRoomIndex: context.currentRoomIndex + 1,
-    pendingIchor: context.pendingIchor + (event.ichorReward ?? 0),
-  }),
-);
-
-const advanceFloorCleared = assign(
-  ({
-    context,
-    event,
-  }: {
-    context: RunFlowContext;
-    event: Extract<RunFlowEvent, { type: "FLOOR_CLEARED" }>;
-  }) => ({
-    currentFloorIndex: context.currentFloorIndex + 1,
-    currentRoomIndex: 0,
-    pendingIchor: context.pendingIchor + (event.ichorReward ?? 0),
-  }),
-);
-
-function isFinalFloorEvent({
-  event,
-}: {
-  event: Extract<RunFlowEvent, { type: "FLOOR_CLEARED" }>;
-}): boolean {
-  return event.isFinalFloor;
-}
-
-const recordBossIchorReward = assign(
-  ({
-    context,
-    event,
-  }: {
-    context: RunFlowContext;
-    event: Extract<RunFlowEvent, { type: "BOSS_DEFEATED" }>;
-  }) => ({
-    pendingIchor: context.pendingIchor + (event.ichorReward ?? 0),
-  }),
-);
-
 // --- Machine ---------------------------------------------------------------
+//
+// Event-payload-dependent actions/guards (e.g. reading `event.wingId` or
+// `event.ichorReward`) are written *inline*, directly at their specific
+// `on.<EVENT_TYPE>` call site below, rather than as named entries in
+// `setup({ actions/guards })`. XState v5 types named actions/guards against
+// the *full* event union, so a named action can't safely assume it's only
+// ever reached via one particular event; narrowing to a single event's
+// payload only happens automatically for functions written inline at the
+// call site where TypeScript already knows which event type applies.
 
 export const runFlowMachine = setup({
   types: {} as {
@@ -277,7 +221,15 @@ export const runFlowMachine = setup({
       // in the hub, whether from a fresh game, a completed/failed expedition, or a narrative beat.
       entry: "resetExpeditionProgress",
       on: {
-        SELECT_WING: { target: "inExpedition", actions: startWingExpedition },
+        SELECT_WING: {
+          target: "inExpedition",
+          actions: assign({
+            currentWingId: ({ event }) => event.wingId,
+            currentFloorIndex: 0,
+            currentRoomIndex: 0,
+            pendingIchor: 0,
+          }),
+        },
         SELECT_CONFLUENCE: {
           target: "inExpedition",
           guard: "confluenceUnlocked",
@@ -294,10 +246,29 @@ export const runFlowMachine = setup({
 
     inExpedition: {
       on: {
-        ROOM_CLEARED: { actions: advanceRoomCleared },
+        ROOM_CLEARED: {
+          actions: assign({
+            currentRoomIndex: ({ context }) => context.currentRoomIndex + 1,
+            pendingIchor: ({ context, event }) => context.pendingIchor + (event.ichorReward ?? 0),
+          }),
+        },
         FLOOR_CLEARED: [
-          { guard: isFinalFloorEvent, target: "bossFight", actions: advanceFloorCleared },
-          { actions: advanceFloorCleared },
+          {
+            guard: ({ event }) => event.isFinalFloor,
+            target: "bossFight",
+            actions: assign({
+              currentFloorIndex: ({ context }) => context.currentFloorIndex + 1,
+              currentRoomIndex: 0,
+              pendingIchor: ({ context, event }) => context.pendingIchor + (event.ichorReward ?? 0),
+            }),
+          },
+          {
+            actions: assign({
+              currentFloorIndex: ({ context }) => context.currentFloorIndex + 1,
+              currentRoomIndex: 0,
+              pendingIchor: ({ context, event }) => context.pendingIchor + (event.ichorReward ?? 0),
+            }),
+          },
         ],
         PLAYER_DIED: { target: "runFailed" },
       },
@@ -309,11 +280,19 @@ export const runFlowMachine = setup({
           {
             guard: "isFirstConfluenceClear",
             target: "ending",
-            actions: recordBossIchorReward,
+            actions: assign({
+              pendingIchor: ({ context, event }) => context.pendingIchor + (event.ichorReward ?? 0),
+            }),
           },
           {
             target: "expeditionReward",
-            actions: [recordBossIchorReward, "recordFragmentRecovered"],
+            actions: [
+              assign({
+                pendingIchor: ({ context, event }) =>
+                  context.pendingIchor + (event.ichorReward ?? 0),
+              }),
+              "recordFragmentRecovered",
+            ],
           },
         ],
         PLAYER_DIED: { target: "runFailed" },
