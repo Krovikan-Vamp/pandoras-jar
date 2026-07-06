@@ -5,7 +5,7 @@ import type { CombatEventBus, CombatEventMap, FormId, ModifierOp, Perk } from "@
  * (Solid/Liquid/Gas/Plasma). Sibling files (owned by other Wave 2 agents)
  * cover Universal/School/Rare — this file is Form Perks only.
  *
- * ## Two recurring mechanical patterns
+ * ## Three recurring mechanical patterns
  *
  * 1. **"While in Form X"** — `CombatEventMap.onFormSwap` only fires once at
  *    the moment of a swap; it isn't a queryable "current Form" state. Every
@@ -33,6 +33,23 @@ import type { CombatEventBus, CombatEventMap, FormId, ModifierOp, Perk } from "@
  *    "the registry short-circuits" on any active override). Each such stat
  *    is documented inline where it's introduced.
  *
+ * 3. **`ModifierRegistryImpl` only re-folds a stat on `register`/`unregister`
+ *    — never "live"** — its `get()` caches the folded value per stat and
+ *    only clears that cache inside `register()`/`unregister()` (see its
+ *    class doc: "Recompute is lazy and cached per-stat... `register`/
+ *    `unregister` invalidate the entire cache"). A `condition` callback is
+ *    re-run only when a fold happens, so a modifier registered once with a
+ *    condition that flips later (e.g. our current-Form flag, updated purely
+ *    inside an `onFormSwap` handler) will NOT be picked up by `get()` on its
+ *    own — nothing told the cache it's stale. `ModifierRegistry.test.ts`
+ *    hits this exact edge case and works around it with a throwaway
+ *    `register()` call "to force cache invalidation." Every "while in Form
+ *    X" perk below does the equivalent for real: its `onFormSwap` handler
+ *    re-registers the same modifier(s) (same id/stat/op/value/condition) on
+ *    every relevant swap, which is a no-op change in content but forces
+ *    `ModifierRegistryImpl` to drop its cache so the next `get()` re-folds
+ *    against the now-current condition.
+ *
  * ## What's fully wired today vs. declared-for-later
  *
  * `damageMultiplier` is the one custom-relevant stat actually consumed by
@@ -50,13 +67,20 @@ import type { CombatEventBus, CombatEventMap, FormId, ModifierOp, Perk } from "@
 
 // ---------------------------------------------------------------------------
 // Shared helpers (internal — not exported; every Perk below is built from
-// one of these three shapes).
+// one of these shapes).
 // ---------------------------------------------------------------------------
 
 /**
- * Tracks each actor's current Form by subscribing to `onFormSwap`, per the
- * file-level doc's pattern #1. Shared by every perk below that gates a
- * modifier on "while in Form X".
+ * Tracks each actor's current Form by subscribing to `onFormSwap` (file-level
+ * doc pattern #1). Used by the event-triggered perks below (Bulwark, Viscosity,
+ * Vapor Trail, Arc Reactor) purely to answer "is this actor in Form X *right
+ * now*" from inside an already-firing event handler — which is safe, since
+ * those handlers don't rely on `ModifierRegistryImpl` re-polling a `condition`
+ * on its own (pattern #3 doesn't apply: they either register unconditionally,
+ * or re-register fresh at the moment the tracked value changes). Perks that
+ * DO need a registered modifier's `condition` to depend on this — i.e. every
+ * "while in Form X" passive buff — use `createFormGatedPerk` below instead,
+ * which additionally forces cache invalidation on every swap.
  */
 function createFormTracker() {
   const formByActor = new Map<string, FormId>();
@@ -94,9 +118,16 @@ interface StatModifierSpec {
 
 /**
  * A perk that registers one or more always-on modifiers, each gated on
- * "actor is currently in `form`" via `createFormTracker`. Covers every Form
- * Perk whose whole effect is "passively buff/debuff a stat while in this
- * Form" — no event trigger beyond the Form swap itself is needed.
+ * "actor is currently in `form`" — tracked per actor via `onFormSwap` (see
+ * file-level doc pattern #1). Covers every Form Perk whose whole effect is
+ * "passively buff/debuff a stat while in this Form" — no event trigger
+ * beyond the Form swap itself is needed.
+ *
+ * Per file-level doc pattern #3: the `onFormSwap` handler doesn't just
+ * update the tracked-Form flag, it also re-registers every modifier so
+ * `ModifierRegistryImpl`'s cache is forced to drop and the next `get()`
+ * reflects the actor's new Form immediately, not whenever some unrelated
+ * `register`/`unregister` call next happens to run.
  */
 function createFormGatedPerk(config: {
   id: string;
@@ -105,8 +136,21 @@ function createFormGatedPerk(config: {
   form: FormId;
   modifiers: StatModifierSpec[];
 }): Perk {
-  const tracker = createFormTracker();
+  const formByActor = new Map<string, FormId>();
+  const handlerByActor = new Map<string, (event: CombatEventMap["onFormSwap"]) => void>();
   const modifierId = (actorId: string, index: number) => `${config.id}:${actorId}:${index}`;
+
+  const registerAll = (registry: Parameters<Perk["apply"]>[0], actorId: string): void => {
+    config.modifiers.forEach((modifier, index) => {
+      registry.register({
+        id: modifierId(actorId, index),
+        stat: modifier.stat,
+        op: modifier.op,
+        value: modifier.value,
+        condition: () => formByActor.get(actorId) === config.form,
+      });
+    });
+  };
 
   return {
     id: config.id,
@@ -114,20 +158,26 @@ function createFormGatedPerk(config: {
     displayName: config.displayName,
     description: config.description,
     apply(registry, bus, actorId) {
-      tracker.subscribe(bus, actorId);
-      config.modifiers.forEach((modifier, index) => {
-        registry.register({
-          id: modifierId(actorId, index),
-          stat: modifier.stat,
-          op: modifier.op,
-          value: modifier.value,
-          condition: () => tracker.isIn(actorId, config.form),
-        });
-      });
+      registerAll(registry, actorId);
+
+      const handler = (event: CombatEventMap["onFormSwap"]) => {
+        if (event.actorId !== actorId) {
+          return;
+        }
+        formByActor.set(actorId, event.toForm);
+        registerAll(registry, actorId); // force ModifierRegistryImpl's cache to drop — see pattern #3
+      };
+      handlerByActor.set(actorId, handler);
+      bus.on("onFormSwap", handler);
     },
     remove(registry, bus, actorId) {
       config.modifiers.forEach((_modifier, index) => registry.unregister(modifierId(actorId, index)));
-      tracker.unsubscribe(bus, actorId);
+      const handler = handlerByActor.get(actorId);
+      if (handler) {
+        bus.off("onFormSwap", handler);
+        handlerByActor.delete(actorId);
+      }
+      formByActor.delete(actorId);
     },
   };
 }
@@ -173,20 +223,46 @@ const BULWARK_DAMAGE_TAKEN_MULTIPLIER = 0.5;
 
 /**
  * Bulwark — "brief shield after standing still for a few seconds" (while in
- * Solid). `CombatEventMap` has no continuous movement/idle/tick event at
- * all (see EventBus.ts — `onDash` is the only movement-adjacent event), so
- * true "standing still" can't be observed today. This approximates it with
- * the best available signal: a wall-clock timer that resets on `onDash`
- * (the one real movement event) and on `apply`. Once a proper
- * movement/idle event exists on the bus, swapping this timer for it is a
- * small, isolated change — the registered effect (a `damageTakenMultiplier`
- * shield) doesn't need to move.
+ * Solid). Two independent gaps stack here:
+ *
+ *  - `CombatEventMap` has no continuous movement/idle/tick event at all
+ *    (see EventBus.ts — `onDash` is the only movement-adjacent event), so
+ *    true "standing still" can't be observed today. This approximates it
+ *    with the best available signal: a wall-clock timer that resets on
+ *    `onDash` (the one real movement event) and on `apply`.
+ *  - Per file-level doc pattern #3, `ModifierRegistryImpl` only re-folds a
+ *    stat inside `register()`/`unregister()`, never purely from time
+ *    passing — so even with the timer above, the shield's condition is only
+ *    actually re-evaluated at the moment of an `onDash` or `onFormSwap`
+ *    event (this perk re-registers on both, to force that), not the exact
+ *    instant `BULWARK_STILL_THRESHOLD_MS` elapses. A future periodic tick
+ *    event on the bus would let this re-register on a timer for exact
+ *    behavior; until then, "shield's been up for a few seconds" becomes
+ *    visible on the next Form swap or dash after that, not before.
+ *
+ * Once a proper movement/idle/tick event exists, swapping the trigger for
+ * it is a small, isolated change — the registered effect (a
+ * `damageTakenMultiplier` shield) doesn't need to move.
  */
 export const PERK_SOLID_BULWARK: Perk = (() => {
   const tracker = createFormTracker();
   const lastDashAtByActor = new Map<string, number>();
   const dashHandlerByActor = new Map<string, (event: CombatEventMap["onDash"]) => void>();
+  const formSwapHandlerByActor = new Map<string, (event: CombatEventMap["onFormSwap"]) => void>();
   const modifierId = (actorId: string) => `solid_bulwark:${actorId}`;
+
+  const registerShield = (registry: Parameters<Perk["apply"]>[0], actorId: string): void => {
+    registry.register({
+      id: modifierId(actorId),
+      stat: "damageTakenMultiplier",
+      op: "mult",
+      value: BULWARK_DAMAGE_TAKEN_MULTIPLIER,
+      condition: () => {
+        const lastDashAt = lastDashAtByActor.get(actorId) ?? 0;
+        return tracker.isIn(actorId, "solid") && Date.now() - lastDashAt >= BULWARK_STILL_THRESHOLD_MS;
+      },
+    });
+  };
 
   return {
     id: "solid_bulwark",
@@ -200,21 +276,21 @@ export const PERK_SOLID_BULWARK: Perk = (() => {
       const dashHandler = (event: CombatEventMap["onDash"]) => {
         if (event.actorId === actorId) {
           lastDashAtByActor.set(actorId, Date.now());
+          registerShield(registry, actorId); // force ModifierRegistryImpl's cache to drop — see pattern #3
         }
       };
       dashHandlerByActor.set(actorId, dashHandler);
       bus.on("onDash", dashHandler);
 
-      registry.register({
-        id: modifierId(actorId),
-        stat: "damageTakenMultiplier",
-        op: "mult",
-        value: BULWARK_DAMAGE_TAKEN_MULTIPLIER,
-        condition: () => {
-          const lastDashAt = lastDashAtByActor.get(actorId) ?? 0;
-          return tracker.isIn(actorId, "solid") && Date.now() - lastDashAt >= BULWARK_STILL_THRESHOLD_MS;
-        },
-      });
+      const formSwapHandler = (event: CombatEventMap["onFormSwap"]) => {
+        if (event.actorId === actorId) {
+          registerShield(registry, actorId); // force ModifierRegistryImpl's cache to drop — see pattern #3
+        }
+      };
+      formSwapHandlerByActor.set(actorId, formSwapHandler);
+      bus.on("onFormSwap", formSwapHandler);
+
+      registerShield(registry, actorId);
     },
     remove(registry, bus, actorId) {
       registry.unregister(modifierId(actorId));
@@ -222,6 +298,11 @@ export const PERK_SOLID_BULWARK: Perk = (() => {
       if (dashHandler) {
         bus.off("onDash", dashHandler);
         dashHandlerByActor.delete(actorId);
+      }
+      const formSwapHandler = formSwapHandlerByActor.get(actorId);
+      if (formSwapHandler) {
+        bus.off("onFormSwap", formSwapHandler);
+        formSwapHandlerByActor.delete(actorId);
       }
       lastDashAtByActor.delete(actorId);
       tracker.unsubscribe(bus, actorId);
