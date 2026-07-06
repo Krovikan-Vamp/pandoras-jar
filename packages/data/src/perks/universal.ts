@@ -83,12 +83,19 @@ export function createPerkSecondWind(): Perk {
     displayName: "Second Wind",
     description: "Survive one killing blow at 1 HP (once per expedition).",
     apply(registry, bus, actorId) {
-      registry.register({
-        id: chargeModifierId(actorId),
-        stat: "secondWindCharges",
-        op: "override",
-        value: 2,
-      });
+      // Only grant the charge if this instance hasn't already spent it —
+      // otherwise re-applying a spent instance (which callers are told not
+      // to do, but which should still behave consistently if it happens)
+      // would show a charge as "available" that the handler below can then
+      // never actually consume, since `usedThisExpedition` already gates it.
+      if (!usedThisExpedition) {
+        registry.register({
+          id: chargeModifierId(actorId),
+          stat: "secondWindCharges",
+          op: "override",
+          value: 2,
+        });
+      }
 
       const handler = (event: CombatEventMap["onTakeDamage"]) => {
         if (event.actorId !== actorId || usedThisExpedition) {
