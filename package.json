@@ -6,10 +6,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter game dev",
-    "build": "pnpm -r build",
+    "build:packages": "pnpm --filter @pithos/sim build && pnpm --filter @pithos/render build",
+    "dev": "pnpm run build:packages && pnpm --filter game dev",
+    "build": "pnpm run build:packages && pnpm -r build",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm run build:packages && pnpm -r typecheck"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

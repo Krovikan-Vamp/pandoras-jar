@@ -1,7 +1,7 @@
-export type { Entity, Vector3 } from "./ecs/world";
-export { createWorld } from "./ecs/world";
+export type { Entity, Vector3 } from "./ecs/world.js";
+export { createWorld } from "./ecs/world.js";
 
-export type { MovementConfig, MovementInput, MovementState } from "./movement/types";
-export { DEFAULT_MOVEMENT_CONFIG, createMovementState } from "./movement/types";
+export type { MovementConfig, MovementInput, MovementState } from "./movement/types.js";
+export { DEFAULT_MOVEMENT_CONFIG, createMovementState } from "./movement/types.js";
 
-export { MovementController } from "./movement/MovementController";
+export { MovementController } from "./movement/MovementController.js";

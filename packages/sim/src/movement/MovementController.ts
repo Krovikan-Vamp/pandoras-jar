@@ -4,7 +4,7 @@ import {
   type MovementConfig,
   type MovementInput,
   type MovementState,
-} from "./types";
+} from "./types.js";
 
 /**
  * Pure, headless movement simulation: WASD-style input in, a `MovementState`
@@ -116,8 +116,10 @@ export class MovementController {
     const { config, state } = this;
 
     if (input.glideHeld && state.glideRemaining > 0) {
-      state.isGliding = true;
       state.glideRemaining = Math.max(0, state.glideRemaining - dt);
+      // Re-check after draining: a large enough dt can exhaust the last of the
+      // fuel and end the glide within the same frame.
+      state.isGliding = state.glideRemaining > 0;
     } else {
       state.isGliding = false;
       state.glideRemaining = Math.min(

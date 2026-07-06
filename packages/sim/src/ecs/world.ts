@@ -1,5 +1,5 @@
 import { World } from "miniplex";
-import type { MovementState } from "../movement/types";
+import type { MovementState } from "../movement/types.js";
 
 export interface Vector3 {
   x: number;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MovementController } from "./MovementController";
-import { DEFAULT_MOVEMENT_CONFIG, type MovementInput } from "./types";
+import { MovementController } from "./MovementController.js";
+import { DEFAULT_MOVEMENT_CONFIG, type MovementInput } from "./types.js";
 
 function makeInput(overrides: Partial<MovementInput> = {}): MovementInput {
   return {
@@ -76,8 +76,9 @@ describe("MovementController", () => {
         DEFAULT_MOVEMENT_CONFIG.dashSpeedMultiplier * DEFAULT_MOVEMENT_CONFIG.baseSpeed,
       );
 
-      // Advance through the rest of the dash duration.
-      let elapsed = dt;
+      // Advance through the rest of the dash duration. The triggering frame
+      // above doesn't itself count toward dash-elapsed time, so this starts at 0.
+      let elapsed = 0;
       while (elapsed < DEFAULT_MOVEMENT_CONFIG.dashDuration) {
         state = controller.update(makeInput({ moveZ: 1 }), dt);
         elapsed += dt;
