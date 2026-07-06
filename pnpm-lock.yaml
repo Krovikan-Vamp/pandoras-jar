@@ -142,6 +142,12 @@ importers:
       '@pithos/audio':
         specifier: workspace:*
         version: link:../audio
+      '@pithos/data':
+        specifier: workspace:*
+        version: link:../data
+      '@pithos/sim':
+        specifier: workspace:*
+        version: link:../sim
       react:
         specifier: ^19.2.7
         version: 19.2.7

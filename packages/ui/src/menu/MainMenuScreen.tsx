@@ -30,6 +30,8 @@ export function MainMenuScreen({ onStartGame, onContinue, hasSaveData }: MainMen
     play();
   }, [play]);
 
+  const fallback = "...someone's there. Please — still be there.";
+
   return (
     <div style={styles.root}>
       <div style={styles.vignette} />
@@ -43,7 +45,7 @@ export function MainMenuScreen({ onStartGame, onContinue, hasSaveData }: MainMen
 
       <h1 style={styles.title}>Pithos: Embers of Elpis</h1>
 
-      <p style={styles.voiceLine}>{text ? `"${text}"` : "…"}</p>
+      <p style={styles.voiceLine}>{`"${text ?? fallback}"`}</p>
 
       <div style={styles.buttonRow}>
         <button
