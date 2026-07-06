@@ -13,7 +13,9 @@ import {
   createIsometricCamera,
   createPlayerPlaceholder,
   createScene,
+  loadGltfModel,
   resizeIsometricCamera,
+  SCHOOL_PALETTE,
 } from "@pithos/render";
 import {
   createEventBus,
@@ -81,6 +83,39 @@ export interface ExpeditionCallbacks {
   onPlayerDied: () => void;
 }
 
+const PLAYER_MODEL_PATH = "/models/characters/humanoid_base.glb";
+const PLAYER_TARGET_HEIGHT = 1.8;
+
+/** Recolors every standard material in `group` to the given School's palette. */
+function applyPlayerTint(group: THREE.Object3D, schoolId: SchoolId): void {
+  const palette = SCHOOL_PALETTE[schoolId];
+  group.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    const tinted = materials.map((material: THREE.Material) => {
+      const clone = material.clone();
+      if (clone instanceof THREE.MeshStandardMaterial) {
+        clone.color.setHex(palette.secondary);
+        clone.emissive.setHex(palette.emissive);
+        clone.emissiveIntensity = 0.4;
+      }
+      return clone;
+    });
+    child.material = Array.isArray(child.material) ? tinted : (tinted[0] ?? child.material);
+  });
+}
+
+/** Scales `group` so its height matches `targetHeight`, returning the Y offset needed to ground it. */
+function normalizeHeight(group: THREE.Object3D, targetHeight: number): number {
+  const box = new THREE.Box3().setFromObject(group);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const scale = size.y > 0 ? targetHeight / size.y : 1;
+  group.scale.setScalar(scale);
+  const scaledBox = new THREE.Box3().setFromObject(group);
+  return -scaledBox.min.y;
+}
+
 function resolveRoomSpawns(room: RoomTemplate): EnemyDefinition[] {
   const resolved: EnemyDefinition[] = [];
   for (const marker of room.spawns ?? []) {
@@ -112,7 +147,7 @@ export class ExpeditionRuntime {
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.OrthographicCamera;
   private readonly isoOffset: THREE.Vector3;
-  private readonly playerMesh: THREE.Mesh;
+  private playerMesh: THREE.Object3D;
   private readonly debugHud: DebugHud;
   private readonly input: InputManager;
   private readonly movement: MovementController;
@@ -188,10 +223,12 @@ export class ExpeditionRuntime {
   }
 
   /** Starts descending into a wing: resolves its School/room-pool/boss, generates a plan, spawns the first combat room. */
-  start(wingId: WingId): void {
+  async start(wingId: WingId): Promise<void> {
     this.wingId = wingId;
     this.schoolId = wingId === "confluence" ? CONFLUENCE_DEFAULT_SCHOOL : wingId;
     this.scene.background = new THREE.Color(SCHOOL_AMBIENT_TINT[this.schoolId]);
+
+    await Promise.all([this.encounter.preloadModels(), this.loadPlayerModel()]);
 
     const roomPool = wingId === "confluence" ? CONFLUENCE_ROOM_POOL : WING_ROOMS[wingId];
     const wingDefinition: WingDefinition = {
@@ -205,14 +242,29 @@ export class ExpeditionRuntime {
     this.combatRooms = floor ? floor.rooms.filter((room) => room.kind === "combat") : [];
     this.combatRoomIndex = 0;
     this.inBossFight = false;
-    this.spawnCurrentCombatRoom();
+    await this.spawnCurrentCombatRoom();
   }
 
-  private spawnCurrentCombatRoom(): void {
+  private async loadPlayerModel(): Promise<void> {
+    try {
+      const group = await loadGltfModel(PLAYER_MODEL_PATH);
+      applyPlayerTint(group, this.schoolId);
+      const groundOffset = normalizeHeight(group, PLAYER_TARGET_HEIGHT);
+      group.position.copy(this.playerMesh.position).setY(groundOffset);
+      this.scene.remove(this.playerMesh);
+      this.playerMesh = group;
+      this.scene.add(this.playerMesh);
+    } catch (error) {
+      // Real model failed to load (e.g. offline dev server) — the capsule placeholder already in the scene stays as a graceful fallback.
+      console.warn("ExpeditionRuntime: falling back to placeholder player mesh —", error);
+    }
+  }
+
+  private async spawnCurrentCombatRoom(): Promise<void> {
     const room = this.combatRooms[this.combatRoomIndex];
     if (!room) return;
     const enemies = resolveRoomSpawns(room);
-    this.encounter.spawnRoom(enemies, this.playerMesh.position);
+    await this.encounter.spawnRoom(enemies, this.playerMesh.position, this.schoolId);
   }
 
   private handleRoomCleared(ichorReward: number): void {
@@ -238,25 +290,25 @@ export class ExpeditionRuntime {
   }
 
   /** Called by the UI layer once the player clicks a perk card. */
-  resolvePerkChoice(perk: Perk): void {
+  async resolvePerkChoice(perk: Perk): Promise<void> {
     perk.apply(this.modifiers, this.eventBus, "player");
     this.heldPerks.push(perk);
     this.awaitingPerkChoice = false;
 
     const wasLastCombatRoom = this.combatRoomIndex >= this.combatRooms.length - 1;
     if (wasLastCombatRoom) {
-      this.spawnBossFight();
+      await this.spawnBossFight();
     } else {
       this.combatRoomIndex += 1;
-      this.spawnCurrentCombatRoom();
+      await this.spawnCurrentCombatRoom();
     }
   }
 
-  private spawnBossFight(): void {
+  private async spawnBossFight(): Promise<void> {
     this.inBossFight = true;
     const boss = this.wingId === "confluence" ? BOSS_KENOMA : WING_BOSSES[this.wingId];
     const bossSpawn = this.playerMesh.position.clone().add(new THREE.Vector3(0, 0, -6));
-    this.encounter.spawnBoss(boss, bossSpawn);
+    await this.encounter.spawnBoss(boss, bossSpawn, this.schoolId);
   }
 
   private handleBossDefeated(ichorReward: number): void {
@@ -295,6 +347,12 @@ export class ExpeditionRuntime {
       this.playerMesh.position.set(position.x, position.y, position.z);
     }
 
+    const horizontalSpeedSq = movementState.velocity.x * movementState.velocity.x + movementState.velocity.z * movementState.velocity.z;
+    if (horizontalSpeedSq > 0.0001) {
+      const targetYaw = Math.atan2(movementState.velocity.x, movementState.velocity.z);
+      this.playerMesh.rotation.y = targetYaw;
+    }
+
     this.camera.position.copy(this.playerMesh.position).add(this.isoOffset);
     this.camera.lookAt(this.playerMesh.position);
     this.debugHud.update(movementState, this.playerMesh.position);
@@ -327,7 +385,12 @@ export class ExpeditionRuntime {
         const { released } = this.flux.consumeChargeOnSwapOut(this.currentFormId, currentForm);
         if (released) {
           const burstDamage = currentForm.burstOnSwapOut.timeline.baseDamage * this.modifiers.get("damageMultiplier");
-          this.encounter.playerAreaDamage(this.playerMesh.position, currentForm.burstOnSwapOut.radius, burstDamage);
+          this.encounter.playerAreaDamage(
+            this.playerMesh.position,
+            currentForm.burstOnSwapOut.radius,
+            burstDamage,
+            this.schoolId,
+          );
         }
         this.flux.spend(nextForm);
         this.currentFormId = requestedForm;
@@ -349,7 +412,7 @@ export class ExpeditionRuntime {
         : new THREE.Vector3(movementState.velocity.x, 0, movementState.velocity.z);
       if (facing.lengthSq() === 0) facing.set(0, 0, -1);
       facing.normalize();
-      this.encounter.playerAttack(this.playerMesh.position, facing, resolved);
+      this.encounter.playerAttack(this.playerMesh.position, facing, resolved, this.currentFormId);
       const { windupSeconds, activeSeconds, recoverySeconds } = resolved.timeline;
       // cooldownMultiplier < 1 means faster recovery (e.g. perks that speed up attacks).
       this.attackCooldownRemaining =

@@ -111,9 +111,9 @@ const AMBIENT_PROFILE_BUILDERS: Record<SchoolId, (radius: number) => AmbientProf
 function buildDustProfile(radius: number): AmbientProfile {
   const palette = SCHOOL_PALETTE.earth;
   const primary = new THREE.Color(palette.primary);
-  const secondary = new THREE.Color(palette.secondary);
+  const emissive = new THREE.Color(palette.emissive);
   const count = Math.round(THREE.MathUtils.clamp(radius * 3, 20, 70));
-  const baseSize = ParticlePoints.toDeviceSize(3.5);
+  const baseSize = ParticlePoints.toDeviceSize(4.5);
 
   const spawn = (): AmbientParticle => ({
     position: randomPointInSphere(radius),
@@ -123,7 +123,10 @@ function buildDustProfile(radius: number): AmbientProfile {
       THREE.MathUtils.randFloatSpread(0.15)
     ),
     size: baseSize * THREE.MathUtils.randFloat(0.7, 1.4),
-    color: Math.random() < 0.5 ? primary : secondary,
+    // Dust motes only really read as visible where they catch light, so this
+    // leans on the bright `emissive` tone rather than the (dark, low-contrast
+    // against the ash backdrop) `primary`/`secondary` shades.
+    color: Math.random() < 0.6 ? emissive : primary,
     phase: Math.random() * Math.PI * 2,
     angle: 0,
   });
@@ -131,7 +134,7 @@ function buildDustProfile(radius: number): AmbientProfile {
   return {
     count,
     texture: getSoftCircleTexture(),
-    blending: THREE.NormalBlending,
+    blending: THREE.AdditiveBlending,
     spawn,
     step: (particle, dt) => {
       particle.position.addScaledVector(particle.velocity, dt);
@@ -139,7 +142,7 @@ function buildDustProfile(radius: number): AmbientProfile {
       if (particle.position.length() > radius * 1.05) {
         Object.assign(particle, spawn());
       }
-      return 0.35 + Math.sin(particle.phase * 0.6) * 0.1;
+      return 0.45 + Math.sin(particle.phase * 0.6) * 0.15;
     },
   };
 }
@@ -190,7 +193,7 @@ function buildBubbleProfile(radius: number): AmbientProfile {
   const primary = new THREE.Color(palette.primary);
   const emissive = new THREE.Color(palette.emissive);
   const count = Math.round(THREE.MathUtils.clamp(radius * 3, 20, 70));
-  const baseSize = ParticlePoints.toDeviceSize(3);
+  const baseSize = ParticlePoints.toDeviceSize(4);
 
   const spawnAt = (y: number): AmbientParticle => {
     const distance = Math.sqrt(Math.random()) * radius;
@@ -199,7 +202,10 @@ function buildBubbleProfile(radius: number): AmbientProfile {
       position: new THREE.Vector3(Math.cos(angle) * distance, y, Math.sin(angle) * distance),
       velocity: new THREE.Vector3(0, THREE.MathUtils.randFloat(0.12, 0.3), 0),
       size: baseSize * THREE.MathUtils.randFloat(0.6, 1.5),
-      color: Math.random() < 0.3 ? emissive : primary,
+      // Deep teal `primary` barely registers against the dark backdrop, so
+      // bubbles lean on the pale `emissive` foam tone to actually read as
+      // catching light, the way real bubbles/mist highlights do.
+      color: Math.random() < 0.55 ? emissive : primary,
       phase: Math.random() * Math.PI * 2,
       angle: 0,
     };
@@ -208,7 +214,7 @@ function buildBubbleProfile(radius: number): AmbientProfile {
   return {
     count,
     texture: getSoftCircleTexture(),
-    blending: THREE.NormalBlending,
+    blending: THREE.AdditiveBlending,
     spawn: () => spawnAt(THREE.MathUtils.randFloat(-radius, radius)),
     step: (particle, dt) => {
       particle.phase += dt * 1.4;
@@ -218,7 +224,7 @@ function buildBubbleProfile(radius: number): AmbientProfile {
       if (particle.position.y > radius) {
         Object.assign(particle, spawnAt(-radius));
       }
-      return 0.3 + Math.sin(particle.phase * 0.5) * 0.15;
+      return 0.35 + Math.sin(particle.phase * 0.5) * 0.2;
     },
   };
 }

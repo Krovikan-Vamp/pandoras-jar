@@ -11,16 +11,28 @@ import {
   PerkPickOverlay,
   RunFailedScreen,
   useRunFlow,
+  type HubRoomId,
 } from "@pithos/ui";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ExpeditionRuntime, type HudSnapshot, type WingId } from "./combat/ExpeditionRuntime";
+import { HubRuntime } from "./hub/HubRuntime";
 
 type TransientOverlay =
   | { type: "reward"; wingId: WingId; ichorEarned: number }
   | { type: "failed" }
   | { type: "midpoint" };
+
+const HUB_ROOM_LABELS: Record<HubRoomId, string> = {
+  sanctuary: "Elpis's Sanctuary",
+  threshold: "The Threshold Gate",
+  reliquary: "The Reliquary",
+  anvil: "Hephaestus's Anvil",
+  cistern: "The Danaids' Cistern",
+  garden: "The Reagent Garden",
+  shrines: "School Shrines",
+};
 
 interface GameShellProps {
   runFlowActor: RunFlowActor;
@@ -57,7 +69,12 @@ export function GameShell({ runFlowActor, saveAdapter, initialMeta }: GameShellP
 
   const expeditionContainerRef = useRef<HTMLDivElement>(null);
   const expeditionRuntimeRef = useRef<ExpeditionRuntime | null>(null);
+  const hubContainerRef = useRef<HTMLDivElement>(null);
+  const hubRuntimeRef = useRef<HubRuntime | null>(null);
   const prevMidpointSeenRef = useRef(context.midpointRevelationSeen);
+
+  const [hubOverlayRoomId, setHubOverlayRoomId] = useState<HubRoomId | null>(null);
+  const [nearbyHubZone, setNearbyHubZone] = useState<HubRoomId | null>(null);
 
   // Persist meta (Ichor, unlocked Schools) to the game's own save data
   // (assets/audio-style: real persistence, not just this browser session)
@@ -119,6 +136,34 @@ export function GameShell({ runFlowActor, saveAdapter, initialMeta }: GameShellP
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed only on isInActiveCombat; see class doc.
   }, [isInActiveCombat]);
 
+  // True exactly when the walkable 3D hub (as opposed to a transient overlay
+  // screen, the main menu, active combat, or the ending) should be mounted —
+  // this must match the JSX branch below exactly, or the container div and
+  // this effect's mount attempt fall out of sync (see the isInActiveCombat
+  // effect above for the same requirement).
+  const isHubActive = transientOverlay === null && !isInActiveCombat && state !== "mainMenu" && state !== "ending";
+
+  useEffect(() => {
+    if (!isHubActive) return;
+    const container = hubContainerRef.current;
+    if (!container || hubRuntimeRef.current) return;
+
+    setHubOverlayRoomId(null);
+    setNearbyHubZone(null);
+
+    const runtime = new HubRuntime(container, {
+      onZoneInteract: (roomId) => setHubOverlayRoomId(roomId),
+      onNearbyZoneChanged: (roomId) => setNearbyHubZone(roomId),
+    });
+    hubRuntimeRef.current = runtime;
+
+    return () => {
+      runtime.dispose();
+      hubRuntimeRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed only on isHubActive; see comment above.
+  }, [isHubActive]);
+
   const handlePerkSelect = useCallback((perk: Perk) => {
     expeditionRuntimeRef.current?.resolvePerkChoice(perk);
     setPerkChoices(null);
@@ -153,18 +198,6 @@ export function GameShell({ runFlowActor, saveAdapter, initialMeta }: GameShellP
     return <MainMenuScreen onStartGame={handleStartGame} onContinue={handleStartGame} hasSaveData={hasSaveData} />;
   }
 
-  if (state === "hub") {
-    return (
-      <HubScreen
-        context={context}
-        ichor={meta.ichor}
-        unlockedSchools={meta.unlockedSchools}
-        onSelectWing={handleSelectWing}
-        onSelectConfluence={handleSelectConfluence}
-      />
-    );
-  }
-
   if (isInActiveCombat) {
     return (
       <div style={{ position: "fixed", inset: 0 }}>
@@ -188,7 +221,44 @@ export function GameShell({ runFlowActor, saveAdapter, initialMeta }: GameShellP
     );
   }
 
-  // "newGamePlus" is itself an eventless always-transition straight back to
-  // hub (see class doc) — it's never actually observable here either.
-  return <HubScreen context={context} ichor={meta.ichor} unlockedSchools={meta.unlockedSchools} onSelectWing={handleSelectWing} onSelectConfluence={handleSelectConfluence} />;
+  // "hub" and the "newGamePlus" eventless always-transition (see class doc)
+  // both land here: a walkable 3D town square (HubRuntime), with HubScreen
+  // shown as a full-screen interaction overlay once the player walks up to
+  // a zone and interacts with it.
+  return (
+    <div style={{ position: "fixed", inset: 0 }}>
+      <div ref={hubContainerRef} style={{ position: "absolute", inset: 0 }} />
+      {!hubOverlayRoomId && nearbyHubZone ? (
+        <div style={hubPromptStyle}>Press J or Click to enter {HUB_ROOM_LABELS[nearbyHubZone]}</div>
+      ) : null}
+      {hubOverlayRoomId ? (
+        <div style={{ position: "absolute", inset: 0 }}>
+          <HubScreen
+            context={context}
+            ichor={meta.ichor}
+            unlockedSchools={meta.unlockedSchools}
+            onSelectWing={handleSelectWing}
+            onSelectConfluence={handleSelectConfluence}
+            initialRoomId={hubOverlayRoomId}
+            onExit={() => setHubOverlayRoomId(null)}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
 }
+
+const hubPromptStyle: CSSProperties = {
+  position: "absolute",
+  bottom: 40,
+  left: "50%",
+  transform: "translateX(-50%)",
+  padding: "10px 20px",
+  borderRadius: 6,
+  background: "rgba(21, 19, 25, 0.85)",
+  border: "1px solid #8a6a34",
+  color: "#f0c56c",
+  fontFamily: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
+  fontSize: 15,
+  letterSpacing: "0.02em",
+};

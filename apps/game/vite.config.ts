@@ -10,6 +10,13 @@ import { audioAdminPlugin } from "./vite-plugins/audioAdminPlugin";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export default defineConfig({
+  // Serves (and bundles into production builds) everything under the
+  // repo-root assets/ directory at the URL root — assets/models/foo.glb
+  // becomes fetchable at /models/foo.glb, with no duplication into
+  // apps/game/public/. assets/audio/generated/ also becomes reachable this
+  // way, though audioAdminPlugin's own dev-only static serving (a
+  // different URL prefix, /audio-admin-files/) still works in parallel.
+  publicDir: resolve(repoRoot, "assets"),
   server: {
     host: true,
   },

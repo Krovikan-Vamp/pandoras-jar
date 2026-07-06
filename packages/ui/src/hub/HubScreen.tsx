@@ -29,9 +29,17 @@ export interface HubScreenProps {
   unlockedSchools: SchoolId[];
   onSelectWing: (schoolId: SchoolId) => void;
   onSelectConfluence: () => void;
+  /** Which room panel to open on mount — e.g. the room a player just walked
+   * up to in the 3D hub (`HubRuntime`'s `onZoneInteract`). Defaults to "sanctuary". */
+  initialRoomId?: HubRoomId;
+  /** When set, renders an exit affordance in the header (used when this screen is
+   * shown as an interaction overlay on top of the walkable 3D hub, rather than
+   * as the only hub view). */
+  onExit?: () => void;
 }
 
-type RoomId = "sanctuary" | "threshold" | "reliquary" | "anvil" | "cistern" | "garden" | "shrines";
+export type HubRoomId = "sanctuary" | "threshold" | "reliquary" | "anvil" | "cistern" | "garden" | "shrines";
+type RoomId = HubRoomId;
 
 const ROOMS: ReadonlyArray<{ id: RoomId; label: string; blurb: string }> = [
   { id: "sanctuary", label: "Elpis's Sanctuary", blurb: "Narrative anchor & save point" },
@@ -59,8 +67,10 @@ export function HubScreen({
   unlockedSchools,
   onSelectWing,
   onSelectConfluence,
+  initialRoomId,
+  onExit,
 }: HubScreenProps): JSX.Element {
-  const [activeRoom, setActiveRoom] = useState<RoomId>("sanctuary");
+  const [activeRoom, setActiveRoom] = useState<RoomId>(initialRoomId ?? "sanctuary");
 
   return (
     <div style={styles.root}>
@@ -69,9 +79,16 @@ export function HubScreen({
           <h1 style={styles.title}>Elpis's Threshold</h1>
           <p style={styles.subtitle}>The Hub</p>
         </div>
-        <div style={styles.ichorBadge}>
-          <span style={styles.ichorLabel}>Ichor</span>
-          <span style={styles.ichorValue}>{ichor}</span>
+        <div style={styles.headerRight}>
+          <div style={styles.ichorBadge}>
+            <span style={styles.ichorLabel}>Ichor</span>
+            <span style={styles.ichorValue}>{ichor}</span>
+          </div>
+          {onExit ? (
+            <button type="button" style={styles.exitButton} onClick={onExit}>
+              Return to the Jar
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -385,6 +402,11 @@ const styles: Record<string, CSSProperties> = {
     fontStyle: "italic",
     color: colors.textDim,
   },
+  headerRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+  },
   ichorBadge: {
     display: "flex",
     alignItems: "baseline",
@@ -393,6 +415,18 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 6,
     border: `1px solid ${colors.goldDim}`,
     background: `${colors.gold}14`,
+  },
+  exitButton: {
+    fontFamily: fonts.display,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    fontSize: 13,
+    padding: "9px 18px",
+    borderRadius: 4,
+    border: `1px solid ${colors.ashBorder}`,
+    background: colors.ashPanel,
+    color: colors.textPrimary,
+    cursor: "pointer",
   },
   ichorLabel: {
     fontSize: 12,

@@ -8,6 +8,7 @@ export { MidpointRevelationScreen } from "./menu/MidpointRevelationScreen.js";
 export { EndingScreen } from "./menu/EndingScreen.js";
 
 export { HubScreen } from "./hub/HubScreen.js";
+export type { HubScreenProps, HubRoomId } from "./hub/HubScreen.js";
 export { ExpeditionRewardScreen } from "./hub/ExpeditionRewardScreen.js";
 export { RunFailedScreen } from "./hub/RunFailedScreen.js";
 
