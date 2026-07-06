@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pithos/sim": "workspace:*",
     "three": "^0.185.1"
   },
   "devDependencies": {
